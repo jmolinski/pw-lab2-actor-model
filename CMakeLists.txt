@@ -4,7 +4,7 @@ project (CACTI)
 enable_testing()
 
 #set(CMAKE_C_STANDARD ...)
-set(CMAKE_C_FLAGS "-g -Wall -Wextra -pthread")
+set(CMAKE_C_FLAGS "-g -Wall -Wextra -pedantic -std=gnu11 -pthread")
 
 # http://stackoverflow.com/questions/10555706/
 macro (add_executable _name)
@@ -15,7 +15,7 @@ macro (add_executable _name)
   endif()
 endmacro()
 
-add_library(cacti STATIC cacti.c)
+add_library(cacti STATIC cacti.c queue.c threadpool.c actor.c)
 add_executable(macierz macierz.c)
 add_executable(silnia silnia.c)
 add_subdirectory(test)

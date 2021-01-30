@@ -1,0 +1,9 @@
+BasedOnStyle: llvm
+IndentWidth: 4
+AllowShortFunctionsOnASingleLine: None
+KeepEmptyLinesAtTheStartOfBlocks: false
+ColumnLimit: 100
+IndentCaseLabels: true
+AllowShortBlocksOnASingleLine: Never
+AlwaysBreakTemplateDeclarations: Yes
+UseTab: Never
