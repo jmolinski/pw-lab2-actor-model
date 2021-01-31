@@ -15,6 +15,7 @@ typedef struct threadpool_t {
     pthread_t *threads;
     queue_t *task_queue;
     int thread_count;
+    int alive_threads;
     bool shutdown;
     void (*worker_job)(void *);
 } threadpool_t;

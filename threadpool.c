@@ -5,11 +5,15 @@ static void *threadpool_worker(void *threadpool) {
     threadpool_t *pool = threadpool;
 
     while (true) {
-        pthread_mutex_lock(&(pool->lock));
+        if (pthread_mutex_lock(&(pool->lock)) != 0) {
+            exit(2);
+        }
 
         // wait for tasks or for shutdown
         while ((queue_size(pool->task_queue) == 0) && (!pool->shutdown)) {
-            pthread_cond_wait(&(pool->notify), &(pool->lock));
+            if (pthread_cond_wait(&(pool->notify), &(pool->lock)) != 0) {
+                exit(2);
+            }
         }
 
         if (pool->shutdown && queue_size(pool->task_queue) == 0) {
@@ -17,12 +21,17 @@ static void *threadpool_worker(void *threadpool) {
         }
 
         threadpool_task_t *task = (threadpool_task_t *)queue_pop(pool->task_queue);
-        pthread_mutex_unlock(&(pool->lock));
+        if (pthread_mutex_unlock(&(pool->lock)) != 0) {
+            exit(2);
+        }
 
         (*(pool->worker_job))(task);
     }
 
-    pthread_mutex_unlock(&(pool->lock));
+    pool->alive_threads--;
+    if (pthread_mutex_unlock(&(pool->lock)) != 0) {
+        exit(2);
+    }
     pthread_exit(NULL);
     return NULL;
 }
@@ -32,7 +41,7 @@ threadpool_t *threadpool_create(unsigned thread_count, void (*worker_job)(void *
     if (pool == NULL) {
         return NULL;
     }
-    pool->thread_count = 0;
+    pool->thread_count = pool->alive_threads = 0;
     pool->shutdown = false;
     pool->worker_job = worker_job;
 
@@ -59,6 +68,7 @@ threadpool_t *threadpool_create(unsigned thread_count, void (*worker_job)(void *
             exit(1); // TODO
         }
         pool->thread_count++;
+        pool->alive_threads++;
     }
 
     return pool;
@@ -95,9 +105,11 @@ void threadpool_destroy(threadpool_t *pool) {
     pool->shutdown = true;
 
     // wake up all workers
-    if ((pthread_cond_broadcast(&(pool->notify)) != 0) ||
-        (pthread_mutex_unlock(&(pool->lock)) != 0)) {
-        exit(1); // TODO
+    while (pool->alive_threads) {
+        if ((pthread_cond_broadcast(&(pool->notify)) != 0) ||
+            (pthread_mutex_unlock(&(pool->lock)) != 0)) {
+            exit(1); // TODO
+        }
     }
 
     // join all workers

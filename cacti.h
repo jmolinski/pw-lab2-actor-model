@@ -5,10 +5,8 @@
 
 typedef long message_type_t;
 
-//#define MSG_SPAWN (message_type_t)0x06057a6e
-//#define MSG_GODIE (message_type_t)0x60bedead
-#define MSG_SPAWN (message_type_t)100
-#define MSG_GODIE (message_type_t)2137
+#define MSG_SPAWN (message_type_t)0x06057a6e
+#define MSG_GODIE (message_type_t)0x60bedead
 #define MSG_HELLO (message_type_t)0x0
 
 #ifndef ACTOR_QUEUE_LIMIT
@@ -20,7 +18,7 @@ typedef long message_type_t;
 #endif
 
 #ifndef POOL_SIZE
-#define POOL_SIZE 1
+#define POOL_SIZE 2
 #endif
 
 typedef struct message {
@@ -32,15 +30,6 @@ typedef struct message {
 typedef long actor_id_t;
 
 actor_id_t actor_id_self();
-
-/* Pierwszy argument zawiera wskaźnik do stanu wewnętrznego aktora, który
- * obsługuje komunikat. Stan ten jest zależny od implementacji
- * konkretnego obliczenia - aktory w różnych systemach lub o różnych
- * rolach mogą korzystać z różnych formatów tego stanu. Drugi argument
- * to rozmiar w bajtach danych wskazywanych przez trzeci argument.
- * Wreszcie trzeci argument to wskaźnik do fragmentu globalnego stanu,
- * który może być odczytywany i modyfikowany przez funkcję obsługi.
- * */
 
 typedef void (*const act_t)(void **stateptr, size_t nbytes, void *data);
 

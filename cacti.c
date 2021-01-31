@@ -2,17 +2,14 @@
 #include "actor.h"
 #include "threadpool.h"
 #include <pthread.h>
+#include <stdio.h>
 #include <string.h>
-
-void errexit(int code) {
-    exit(code);
-}
 
 typedef struct actor_system_s {
     pthread_mutex_t lock_actor_queues;
     pthread_cond_t notify_all_dead;
 
-    unsigned number_of_active_actors;
+    long number_of_active_actors;
     threadpool_t *threadpool;
     actor_vector_t *actors;
 } actor_system_t;
@@ -46,23 +43,18 @@ int create_empty_actor(actor_id_t *actor, role_t *role) {
     return 0;
 }
 
-/*
-Do tego służy wywołanie int res = send_message(someactor, msg), które wysyła komunikat opisany przez
-msg do aktora o identyfikatorze someactor. Wynik tego wywołania jest 0, jeśli operacja zakończy się
-poprawnie, -1, jeśli aktor, do którego wysyłamy komunikat, nie przyjmuje komunikatów (zob. opis
-MSG_GODIE poniżej), -2 jeśli aktora o podanym identyfikatorze nie ma w systemie.
+void update_actor_schedule(actor_id_t actor_id, actor_t *actor) {
+    if (!actor->is_scheduled && !queue_is_empty(actor->queue)) {
+        threadpool_task_t *t = malloc(sizeof(threadpool_task_t));
+        if (t == NULL) {
+            exit(1);
+        }
+        t->argument = (void *)actor_id;
+        threadpool_schedule(actor_system->threadpool, t);
+        actor->is_scheduled = true;
+    }
+}
 
- Wysłanie komunikatu wiąże się z włożeniem go do związanej ze wskazanym aktorem kolejki komunikatów.
-Kolejki mają stałe górne ograniczenie na swoją długość (nie mniejszą niż 1024 pozycje).
-
- Aktor działa, wyciągając komunikaty ze swojej kolejki i obsługując je zgodnie z przypisaną sobie
-rolą. Obsługa wyciągania komunikatów z kolejki powinna być tak zorganizowana, aby nie powodować
-zagłodzenia aktorów. Rola jest opisana przez zestaw wywołań umieszczonych w tablicy rozdzielczej, do
-której wskaźnik znajduje się w polu prompts struktury role. W tablicy rozdzielczej znajdują się
-wskaźniki do funkcji obsługujących komunikaty różnych typów. Typy komunikatów są tożsame z indeksami
-w tablicy rozdzielczej. Liczba pozycji w tablicy rozdzielczej jest zapisana w polu nprompts
-struktury role. Funkcje obsługujące komunikaty są typu
- */
 int send_message(actor_id_t actor_id, message_t message) {
     pthread_mutex_lock(&(actor_system->lock_actor_queues));
 
@@ -78,20 +70,12 @@ int send_message(actor_id_t actor_id, message_t message) {
     }
     message_t *m = malloc(sizeof(message_t));
     if (m == NULL) {
-        errexit(1);
+        exit(1);
     }
     memcpy(m, &message, sizeof(message_t));
     queue_push(actor->queue, (void *)m);
 
-    if (!actor->is_scheduled) {
-        threadpool_task_t *t = malloc(sizeof(threadpool_task_t));
-        if (t == NULL) {
-            errexit(1);
-        }
-        t->argument = (void *)actor_id;
-        threadpool_schedule(actor_system->threadpool, t);
-        actor->is_scheduled = true;
-    }
+    update_actor_schedule(actor_id, actor);
 
     pthread_mutex_unlock(&(actor_system->lock_actor_queues));
 
@@ -123,20 +107,16 @@ void threadpool_worker_job(void *arg) {
     free(m);
     free(t);
 
-    pthread_mutex_lock(&(actor_system->lock_actor_queues));
-    if (!queue_is_empty(actor->queue) && !actor->is_scheduled) {
-        t = malloc(sizeof(threadpool_task_t));
-        if (t == NULL) {
-            errexit(1);
-        }
-        t->argument = (void *)actor_id;
-        threadpool_schedule(actor_system->threadpool, t);
-        actor->is_scheduled = true;
-    } else if (actor->is_dead && queue_is_empty(actor->queue)) {
+    if (pthread_mutex_lock(&(actor_system->lock_actor_queues)) != 0) {
+        exit(2);
+    }
+    update_actor_schedule(actor_id, actor);
+    if (actor->is_dead && !actor->is_scheduled && queue_is_empty(actor->queue)) {
         actor_system->number_of_active_actors--;
-
-        if (actor_system->number_of_active_actors == 0) {
-            pthread_cond_broadcast(&(actor_system->notify_all_dead));
+        if (actor_system->number_of_active_actors < 1) {
+            if (pthread_cond_signal(&(actor_system->notify_all_dead)) != 0) {
+                exit(2);
+            }
         }
     }
     pthread_mutex_unlock(&(actor_system->lock_actor_queues));
@@ -168,7 +148,7 @@ int actor_system_create(actor_id_t *actor, role_t *const role) {
 
     if (create_empty_actor(actor, role) != 0) {
         vec_delete(actor_system->actors);
-        free(actor_system->threadpool);
+        threadpool_destroy(actor_system->threadpool);
         free(actor_system);
         return -5;
     }
@@ -180,22 +160,30 @@ int actor_system_create(actor_id_t *actor, role_t *const role) {
 
 void actor_system_join(actor_id_t actor) {
     if (actor_system == NULL) {
-        errexit(1);
+        exit(1);
     }
 
-    pthread_mutex_lock(&(actor_system->lock_actor_queues));
+    if (pthread_mutex_lock(&(actor_system->lock_actor_queues)) != 0) {
+        exit(2);
+    }
     if (actor >= vec_length(actor_system->actors)) {
-        errexit(1);
+        exit(1);
     }
     while (actor_system->number_of_active_actors > 0) {
-
-        pthread_cond_wait(&(actor_system->notify_all_dead), &(actor_system->lock_actor_queues));
+        if (pthread_cond_wait(&(actor_system->notify_all_dead),
+                              &(actor_system->lock_actor_queues)) != 0) {
+            exit(2);
+        }
+    }
+    if (pthread_mutex_unlock(&(actor_system->lock_actor_queues)) != 0) {
+        exit(2);
     }
 
     pthread_key_delete(actor_id_key);
     for (int i = 0; i < vec_length(actor_system->actors); i++) {
         free_actor(actor_system->actors->data[i]);
     }
+
     vec_delete(actor_system->actors);
     threadpool_destroy(actor_system->threadpool);
 
