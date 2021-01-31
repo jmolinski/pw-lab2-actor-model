@@ -7,9 +7,11 @@
 typedef void *queue_data_type;
 
 struct queue_root {
-    struct queue_item *head;
-    struct queue_item *tail;
-    unsigned size;
+    queue_data_type* array;
+    long capacity;
+    long size;
+    long front;
+    long back;
 };
 
 typedef struct queue_root queue_t;

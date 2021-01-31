@@ -1,6 +1,6 @@
 #include "actor.h"
 
-#define INITIAL_SIZE 2
+#define INITIAL_SIZE 1024
 
 void free_actor(actor_t* act) {
     queue_destroy(act->queue);

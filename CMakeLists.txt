@@ -4,7 +4,7 @@ project (CACTI)
 enable_testing()
 
 #set(CMAKE_C_STANDARD ...)
-set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-unused-parameter -std=gnu11 -pthread")
+set(CMAKE_C_FLAGS "-g -Wall -Wextra -std=gnu11 -pthread")
 
 # http://stackoverflow.com/questions/10555706/
 macro (add_executable _name)
