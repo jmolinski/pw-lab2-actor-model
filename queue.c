@@ -1,5 +1,4 @@
 #include "queue.h"
-#include <assert.h>
 
 struct queue_item {
     queue_data_type contents;
@@ -14,7 +13,6 @@ queue_t *queue_create() {
 }
 
 void queue_destroy(queue_t *queue) {
-    assert(queue_size(queue) == 0);
     free(queue);
 }
 

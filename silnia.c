@@ -31,9 +31,8 @@ static act_t prompts[] = {hello, init_run_factorial, save_child_id, process, cle
 static role_t role = {5, prompts};
 
 void hello(void **stateptr, size_t nbytes, void *data) {
-    printf("hello %i\n", actor_id_self());
-
     actor_state_t *state = malloc(sizeof(actor_state_t));
+    *state = (actor_state_t){false, 0, 0, NULL};
 
     if (nbytes == 0) {
         state->is_first = true;
@@ -48,9 +47,7 @@ void hello(void **stateptr, size_t nbytes, void *data) {
 }
 
 void init_run_factorial(void **stateptr, size_t nbytes, void *data) {
-    printf("init factorial %i\n", actor_id_self());
-
-    actor_state_t *state = *stateptr;
+    actor_state_t *state = *(actor_state_t **)stateptr;
 
     state->fact = malloc(sizeof(factorial_data_t));
     state->fact->partial_fac = 1;
@@ -61,13 +58,11 @@ void init_run_factorial(void **stateptr, size_t nbytes, void *data) {
 }
 
 void process(void **stateptr, size_t nbytes, void *data) {
-    printf("process %i\n", actor_id_self());
-
     actor_state_t *state = *stateptr;
     factorial_data_t *fact = (factorial_data_t *)data;
 
     if (fact->current_k == fact->target) {
-        printf("\n\n\n%llu\n\n\n", fact->partial_fac);  // TODO
+        printf("%llu\n", fact->partial_fac);
         send_message(actor_id_self(), (message_t){MSG_CLEANUP, 0, NULL});
     } else {
         fact->current_k++;
@@ -78,7 +73,6 @@ void process(void **stateptr, size_t nbytes, void *data) {
 }
 
 void save_child_id(void **stateptr, size_t nbytes, void *data) {
-    printf("save child id %i\n", actor_id_self());
     actor_state_t *state = *stateptr;
     state->child_id = (actor_id_t)data;
 
@@ -86,7 +80,6 @@ void save_child_id(void **stateptr, size_t nbytes, void *data) {
 }
 
 void cleanup(void **stateptr, size_t nbytes, void *data) {
-    printf("cleanup %i\n", actor_id_self());
     actor_state_t *state = *stateptr;
 
     if (!state->is_first) {
