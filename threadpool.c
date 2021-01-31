@@ -11,6 +11,8 @@ dziwny warunek w while na to czy żyjących wątkow jest > 0.
 #include "threadpool.h"
 #include <pthread.h>
 
+#include <stdio.h>
+
 static void *threadpool_worker(void *threadpool);
 static void threadpool_free(threadpool_t *pool);
 
@@ -19,13 +21,12 @@ threadpool_t *threadpool_create(unsigned thread_count, void (*worker_job)(void *
     if (pool == NULL) {
         return NULL;
     }
-
     pool->thread_count = 0;
     pool->shutdown = false;
     pool->worker_job = worker_job;
 
     pool->threads = (pthread_t *)malloc(sizeof(pthread_t) * thread_count);
-    if (pool->task_queue == NULL) {
+    if (pool->threads == NULL) {
         free(pool);
         return NULL;
     }
