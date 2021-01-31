@@ -12,6 +12,8 @@ struct queue_root {
     long size;
     long front;
     long back;
+
+    pthread_mutex_t mut;
 };
 
 typedef struct queue_root queue_t;

@@ -1,11 +1,11 @@
 #include "queue.h"
-
-#define QUEUE_INITIAL_SIZE 16
+#include <pthread.h>
 
 void queue_destroy(queue_t *queue) {
     if (queue->array != NULL) {
         free(queue->array);
     }
+    pthread_mutex_destroy(&(queue->mut));
     free(queue);
 }
 
@@ -24,6 +24,8 @@ void queue_reserve(queue_t *queue, long n) {
             exit(1);
         }
         queue->capacity = n;
+        queue->size = queue->front = queue->back = 0;
+        return;
     }
 
     queue_data_type *temp = malloc(sizeof(queue_data_type) * n);
@@ -49,11 +51,17 @@ queue_t *queue_create() {
     queue_t *queue = malloc(sizeof(queue_t));
     queue->size = queue->front = queue->back = queue->capacity = 0;
     queue->array = NULL;
-    queue_reserve(queue, QUEUE_INITIAL_SIZE);
+    if (pthread_mutex_init(&(queue->mut), NULL) != 0) {
+        exit(2);
+    }
+
     return queue;
 }
 
 void queue_push(queue_t *queue, queue_data_type item) {
+    if (pthread_mutex_lock(&(queue->mut)) != 0) {
+        exit(2);
+    }
     if (queue->size == queue->capacity) {
         if (queue->capacity == 0) {
             queue_reserve(queue, 1);
@@ -65,12 +73,20 @@ void queue_push(queue_t *queue, queue_data_type item) {
     queue->back = (queue->back + 1) % queue->capacity;
     queue->array[queue->back] = item;
     queue->size++;
+    if (pthread_mutex_unlock(&(queue->mut)) != 0) {
+        exit(2);
+    }
 }
 
 queue_data_type queue_pop(queue_t *queue) {
+    if (pthread_mutex_lock(&(queue->mut)) != 0) {
+        exit(2);
+    }
     queue_data_type item = queue->array[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
-
+    if (pthread_mutex_unlock(&(queue->mut)) != 0) {
+        exit(2);
+    }
     return item;
 }
