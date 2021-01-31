@@ -2,16 +2,30 @@
 #include "actor.h"
 #include "threadpool.h"
 #include <pthread.h>
-#include <stdio.h>
 #include <string.h>
+
+#include <errno.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 typedef struct actor_system_s {
     pthread_mutex_t lock_actor_queues;
     pthread_cond_t notify_all_dead;
 
+    pthread_t sigint_thread;
+
     long number_of_active_actors;
     threadpool_t *threadpool;
     actor_vector_t *actors;
+    bool interrupted;
 } actor_system_t;
 
 static pthread_key_t actor_id_key;
@@ -92,10 +106,14 @@ void threadpool_worker_job(void *arg) {
     message_t *m = (message_t *)queue_pop(actor->queue);
     actor->is_scheduled = false;
     if (m->message_type == MSG_SPAWN) {
-        actor_id_t new_id;
-        create_empty_actor(&new_id, (role_t *)m->data);
-        pthread_mutex_unlock(&(actor_system->lock_actor_queues));
-        send_message(new_id, (message_t){MSG_HELLO, sizeof(actor_id_t), (void *)actor_id});
+        if (actor_system->interrupted) {
+            pthread_mutex_unlock(&(actor_system->lock_actor_queues));
+        } else {
+            actor_id_t new_id;
+            create_empty_actor(&new_id, (role_t *)m->data);
+            pthread_mutex_unlock(&(actor_system->lock_actor_queues));
+            send_message(new_id, (message_t){MSG_HELLO, sizeof(actor_id_t), (void *)actor_id});
+        }
     } else if (m->message_type == MSG_GODIE) {
         actor->is_dead = true;
         pthread_mutex_unlock(&(actor_system->lock_actor_queues));
@@ -119,10 +137,44 @@ void threadpool_worker_job(void *arg) {
             }
         }
     }
-    pthread_mutex_unlock(&(actor_system->lock_actor_queues));
+    if (pthread_mutex_unlock(&(actor_system->lock_actor_queues)) != 0) {
+        exit(2);
+    }
+}
+
+static void *sigint_catcher(void *v) {
+    sigset_t signal_set;
+    sigemptyset(&signal_set);
+    sigaddset(&signal_set, SIGINT);
+    sigaddset(&signal_set, SIGTSTP);
+
+    int sig;
+    sigwait(&signal_set, &sig);
+
+    if (sig == SIGINT) {
+        if (pthread_mutex_lock(&(actor_system->lock_actor_queues)) != 0) {
+            exit(2);
+        }
+
+        actor_system->interrupted = true;
+        for (int i = 0; i < vec_length(actor_system->actors); i++) {
+            actor_system->actors->data[i]->is_dead = true;
+        }
+
+        if (pthread_mutex_unlock(&(actor_system->lock_actor_queues)) != 0) {
+            exit(2);
+        }
+    }
+
+    return NULL;
 }
 
 int actor_system_create(actor_id_t *actor, role_t *const role) {
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
+
     actor_system = malloc(sizeof(actor_system_t));
     if (actor_system == NULL) {
         return -1;
@@ -131,6 +183,11 @@ int actor_system_create(actor_id_t *actor, role_t *const role) {
         (pthread_cond_init(&(actor_system->notify_all_dead), NULL) != 0)) {
         free(actor_system);
         return -2;
+    }
+
+    if (pthread_create(&(actor_system->sigint_thread), NULL, sigint_catcher,
+                       (void *)actor_system) != 0) {
+        exit(2);
     }
 
     actor_system->number_of_active_actors = 0;
@@ -153,6 +210,7 @@ int actor_system_create(actor_id_t *actor, role_t *const role) {
         return -5;
     }
 
+    actor_system->interrupted = false;
     pthread_key_create(&actor_id_key, NULL);
     send_message(*actor, (message_t){MSG_HELLO, 0, NULL});
     return 0;
@@ -174,6 +232,12 @@ void actor_system_join(actor_id_t actor) {
                               &(actor_system->lock_actor_queues)) != 0) {
             exit(2);
         }
+    }
+    if (!actor_system->interrupted) {
+        pthread_kill(actor_system->sigint_thread, SIGTSTP);
+    }
+    if (pthread_join(actor_system->sigint_thread, NULL) != 0) {
+        exit(1);
     }
     if (pthread_mutex_unlock(&(actor_system->lock_actor_queues)) != 0) {
         exit(2);

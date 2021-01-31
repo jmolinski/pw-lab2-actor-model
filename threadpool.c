@@ -59,13 +59,13 @@ threadpool_t *threadpool_create(unsigned thread_count, void (*worker_job)(void *
 
     if ((pthread_mutex_init(&(pool->lock), NULL) != 0) ||
         (pthread_cond_init(&(pool->notify), NULL) != 0)) {
-        exit(1); // TODO
+        exit(1);
     }
 
     // start workers
     for (unsigned i = 0; i < thread_count; i++) {
         if (pthread_create(&(pool->threads[i]), NULL, threadpool_worker, (void *)pool) != 0) {
-            exit(1); // TODO
+            exit(1);
         }
         pool->thread_count++;
         pool->alive_threads++;
@@ -76,14 +76,14 @@ threadpool_t *threadpool_create(unsigned thread_count, void (*worker_job)(void *
 
 void threadpool_schedule(threadpool_t *pool, threadpool_task_t *arg) {
     if (pthread_mutex_lock(&(pool->lock)) != 0) {
-        exit(1); // TODO
+        exit(1);
     }
 
     queue_push(pool->task_queue, (void *)arg);
 
     if ((pthread_cond_broadcast(&(pool->notify)) != 0) ||
         (pthread_mutex_unlock(&pool->lock) != 0)) {
-        exit(1); // TODO
+        exit(1);
     }
 }
 
@@ -108,14 +108,14 @@ void threadpool_destroy(threadpool_t *pool) {
     while (pool->alive_threads) {
         if ((pthread_cond_broadcast(&(pool->notify)) != 0) ||
             (pthread_mutex_unlock(&(pool->lock)) != 0)) {
-            exit(1); // TODO
+            exit(1);
         }
     }
 
     // join all workers
     for (int i = 0; i < pool->thread_count; i++) {
         if (pthread_join(pool->threads[i], NULL) != 0) {
-            exit(1); // TODO
+            exit(1);
         }
     }
 
