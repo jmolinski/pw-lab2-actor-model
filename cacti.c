@@ -143,6 +143,7 @@ void threadpool_worker_job(void *arg) {
 }
 
 static void *sigint_catcher(void *v) {
+    (void)v;
     sigset_t signal_set;
     sigemptyset(&signal_set);
     sigaddset(&signal_set, SIGINT);
